@@ -6,6 +6,7 @@ var VSHADER_SOURCE =
   
   'void main() {\n' +
   '  gl_Position = u_ModelMatrix * a_Position;\n' + //Coordinates
+  '  gl_PointSize = 10.0;\n' + // Point size
   '}\n';
 
 // Fragment shader program
@@ -63,9 +64,14 @@ function main() {
 
 function initVertexBuffers(gl) {
   var vertices = new Float32Array([
-    -0.3, 0.3, -0.3, -0.3, 0.3, -0.3
+    -0.3, 0.3, 0.0, 
+	-0.3, -0.3, 0.0, 
+	0.0, 0.0, 0.3,
+	0.3, -0.3, 0.0,
+	0.3, 0.3, 0.0,
+	0.0, 0.0, 0.3
   ]);
-  var n = 3;// the number of vertices
+  var n = 6;// the number of vertices
 
   var vbo = gl.createBuffer();// Create buffer object
   if (!vbo) {
@@ -80,7 +86,7 @@ function initVertexBuffers(gl) {
     console.log('Failed to get the storage location of a_Position');
     return;
   } 
-  gl.vertexAttribPointer(a_Position, 2, gl.FLOAT, false, 0, 0);
+  gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(a_Position);
 
   return n;
@@ -89,8 +95,8 @@ function initVertexBuffers(gl) {
 function draw(gl, n, currentAngle, modelMatrix, u_ModelMatrix) {
   // Set up rotation matrix
 
-  modelMatrix.setTranslate(0.51, 0, 0);
-  modelMatrix.rotate(currentAngle, 0, 0, 1);
+  //modelMatrix.setTranslate(0.51, 0, 0); // set means from scrach, forget history
+  //modelMatrix.setRotate(currentAngle, 0, 0, 1); // multiply from the right side of the translate matrix. another solution will be keep all the transform matrix separated and just pass them all to the vertex shader to multiply. more clear this way.
 
 
   // Pass the rotation matrix to the vertex shader
