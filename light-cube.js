@@ -1,5 +1,4 @@
 // light-cube.js
-// Vertex shader program
 var VSHADER_SOURCE =
   'attribute vec4 a_Position;\n' +
   'attribute vec4 a_Color;\n' +
@@ -7,13 +6,15 @@ var VSHADER_SOURCE =
   'uniform mat4 u_ViewMatrix;\n' +
   'uniform mat4 u_ProjMatrix;\n' +
   'uniform mat4 u_ModelMatrix;\n' +
+  'uniform mat4 u_NormalMatrix;\n' +
   'uniform vec3 u_LightColor;\n' +
   'uniform vec3 u_LightDirection;\n' +
   'varying vec4 v_Color;\n' +
   
   'void main() {\n' +
   '  gl_Position = u_ProjMatrix * u_ViewMatrix * u_ModelMatrix * a_Position;\n' + //Coordinates
-  '  vec3 normal = normalize(vec3(a_Normal));\n' + 
+  '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
+  //'  vec3 normal = normalize(vec3(a_Normal));\n' + 
   '  vec3 light = normalize(u_LightDirection);\n' + 
   // Dot product the normalized light direction and the normal of the surface
   '  float nDotL =  max(dot(light, normal), 0.0);\n' +
@@ -24,7 +25,6 @@ var VSHADER_SOURCE =
   //'  gl_PointSize = 10.0;\n' +
   '}\n';
 
-// Fragment shader program
 var FSHADER_SOURCE =
   'precision mediump float;\n' +
   'varying vec4 v_Color;\n' +
@@ -32,11 +32,7 @@ var FSHADER_SOURCE =
   '  gl_FragColor = v_Color;\n' + // Set the color
   '}\n';
 
-// Rotation angle (degrees/seconds)
-var ANGLE_STEP = 45.0;
-
 function main() {
-  // Retrieve <canvas> element
   var canvas = document.getElementById('webgl');
 
   // Get the rendering context for WebGL
@@ -56,37 +52,36 @@ function main() {
   var n = initVertexBuffers(gl);
   if (n < 0) {
     console.log('Failed to set the positions of the vertices');
+	return;
   }
   
   // Set the color for clearing <canvas> and enable depth buffer
   gl.clearColor(1.0, 1.0, 1.0, 1.0);
   gl.enable(gl.DEPTH_TEST);
-  
-  // Get the storage location of the u_ModelMatrix variabble
-  var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
-  
-  // Get the storage location of the u_ViewMatrix u_ProjMatrix, u_LightColor, u_LightDirection 
+
+
+  // view, proj, light
+  // Get and set the u_ViewMatrix u_ProjMatrix 
   var u_ViewMatrix = gl.getUniformLocation(gl.program, 'u_ViewMatrix');
   var u_ProjMatrix = gl.getUniformLocation(gl.program, 'u_ProjMatrix');
-  var u_LightColor = gl.getUniformLocation(gl.program, 'u_LightColor');
-  var u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection');
-
+  
   // Set the eye point, look-at point, and up direction
   var viewMatrix = new Matrix4();
-  viewMatrix.setLookAt(0.0, 0.0, 1.0, 0, 0, 0, 0, 1, 0);
+  viewMatrix.setLookAt(g_eyeX, g_eyeY, g_eyeZ, 0, 0, 0, 0, 1, 0);
+
+  //document.onkeydown = function(ev){ keydown(ev, viewMatrix); };
+  //gl.uniformMatrix4fv(u_ViewMatrix, false, viewMatrix.elements);
 
   // Set the projection matrix
   var projMatrix = new Matrix4();
   projMatrix.setPerspective(60, canvas.width/canvas.height, 1, 100); // angle, ratio, near, far
 
-  // Pass the view matrix to u_ViewMatrix and u_ProjMatrix variable
-  gl.uniformMatrix4fv(u_ViewMatrix, false, viewMatrix.elements);
+  // Pass u_ProjMatrix variable
   gl.uniformMatrix4fv(u_ProjMatrix, false, projMatrix.elements);
-  
-  // Create Matrix4 object for model transformation
-  var modelMatrix = new Matrix4();
 
   // Set Direct light color and direction
+  var u_LightColor = gl.getUniformLocation(gl.program, 'u_LightColor');
+  var u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection');
   var lightColor = new Vector3([1.0, 1.0, 1.0]);
   var lightDirection = new Vector3([-0.5, 3.0, 4.0]);
   lightDirection.normalize();
@@ -94,18 +89,28 @@ function main() {
   gl.uniform3fv(u_LightColor, lightColor.elements);
   gl.uniform3fv(u_LightDirection, lightDirection.elements);
   
+  
+  // Get the storage location of the u_ModelMatrix variabble
+  var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
+  var modelMatrix = new Matrix4();
+  var u_NormalMatrix = gl.getUniformLocation(gl.program, 'u_NormalMatrix');
+  var normalMatrix = new Matrix4();
+  
   // Calculate a model matrix
   var currentAngle = 0.0; // Rotate angle
 
   // Start to draw a triangle
   var tick = function(){
     currentAngle = animate(currentAngle); // Update the rotation angle
-    draw(gl, n, currentAngle, modelMatrix, u_ModelMatrix);
+    draw(gl, n, currentAngle, normalMatrix, u_NormalMatrix, viewMatrix, u_ViewMatrix, modelMatrix, u_ModelMatrix);
     requestAnimationFrame(tick); // Request that the brower calls tick
   };
   tick();
 }
 
+// initVertexBuffers function which will pass all arrays and uniform
+// in this case, pass position, color, normal and indices buffers and bind them to shader
+// indices buffer just need be bond not pass to shader
 function initVertexBuffers(gl) {
   var vertices = new Float32Array([
     -0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, //front 0 1 2 3
@@ -165,15 +170,20 @@ function initVertexBuffers(gl) {
   return indices.length;
 }
 
-function draw(gl, n, currentAngle, modelMatrix, u_ModelMatrix) {
+function draw(gl, n, currentAngle, normalMatrix, u_NormalMatrix, viewMatrix, u_ViewMatrix, modelMatrix, u_ModelMatrix) {
   // Set up rotation matrix
-
-  modelMatrix.setTranslate(0, 0, -2.0); // set means from scrach, forget history
-  modelMatrix.rotate(currentAngle, 0, 1, 1); // multiply from the right side of the translate matrix. another solution will be keep all the transform matrix separated and just pass them all to the vertex shader to multiply. more clear this way.
-
+  modelMatrix.setTranslate(0, 0, -2.0);
+  modelMatrix.rotate(currentAngle, 0, 1, 1); // multiply from the right side of the translate matrix. 
+  
+  normalMatrix.setInverseOf(modelMatrix);
+  normalMatrix.transpose();
 
   // Pass the rotation matrix to the vertex shader
   gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.elements);
+  gl.uniformMatrix4fv(u_NormalMatrix, false, normalMatrix.elements);
+     
+  document.onkeydown = function(ev){ keydown(ev, viewMatrix); };
+  gl.uniformMatrix4fv(u_ViewMatrix, false, viewMatrix.elements);
 
   // clear color and depth buffer bit 
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -182,7 +192,27 @@ function draw(gl, n, currentAngle, modelMatrix, u_ModelMatrix) {
   gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_BYTE, 0);
 }
 
+var g_eyeX = 0, g_eyeY = 0.25, g_eyeZ = 0.25;
+function keydown(ev, viewMatrix) {
+  if(ev.keyCode == 39) { // The right arrow key was pressed
+    g_eyeX += 0.1;
+  } else
+  if (ev.keyCode == 37) { // The left arrow key was pressed
+    g_eyeX -= 0.1;
+  } else  // Prevent unnecessary drawing
+
+  if(ev.keyCode == 40) { // The right arrow key was pressed
+    g_eyeY += 0.1;
+  } else
+  if (ev.keyCode == 38) { // The left arrow key was pressed
+    g_eyeY -= 0.1;
+  } else { return; } // Prevent unnecessary drawing
+  viewMatrix.setLookAt(g_eyeX, g_eyeY, g_eyeZ, 0, 0, 0, 0, 1, 0);
+}
+
 // Last time when this function was called
+// Rotation angle (degrees/seconds)
+var ANGLE_STEP = 45.0;
 var g_last = Date.now();
 function animate(angle) {
   // Calculate the elapsed time
